@@ -91,7 +91,17 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-          cache: gradle
+
+      # El proyecto Android se genera más abajo (prebuild), así que la caché de Gradle se
+      # identifica por las dependencias de package-lock.json y no por archivos .gradle.
+      - name: Caché de Gradle
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: gradle-${{ runner.os }}-
 
       - name: Instalar dependencias
         run: npm ci
