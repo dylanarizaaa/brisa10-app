@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "Brisa10",
+    "slug": "brisa10-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "brisa10",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "com.brisa10.app",
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.brisa10.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#171717",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#ffffff",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 96
+        }
+      ],
+      "expo-sqlite",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Brisa10 usa tus fotos para agregarlas a los productos.",
+          "cameraPermission": "Brisa10 usa la cámara para tomar fotos de los productos.",
+          "microphonePermission": false
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
