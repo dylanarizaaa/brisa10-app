@@ -48,7 +48,7 @@ En GitHub → **Settings** → **Secrets and variables** → **Actions** → pes
 
 ### APK de prueba
 
-Cada push a cualquier rama genera el APK (tarda unos 20–30 minutos). Para descargarlo: pestaña **Actions** → la ejecución → **Summary** → **Artifacts** → `brisa10-android-<versión>` (un `.zip` con el `.apk`).
+Cada push a cualquier rama genera el APK (unos 15 minutos; un poco menos cuando ya hay caché). Para descargarlo: pestaña **Actions** → la ejecución → **Summary** → **Artifacts** → `brisa10-android-<versión>` (un `.zip` con el `.apk`).
 
 También puedes lanzarlo a mano: **Actions** → **APK de Android** → **Run workflow**.
 
