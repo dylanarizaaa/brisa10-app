@@ -1,0 +1,160 @@
+# Genera el APK de Android de Brisa10 en GitHub Actions, sin cuenta de Expo.
+#
+# Cuándo se ejecuta:
+#   - En cada push a cualquier rama (salvo cambios solo de documentación): el APK queda como
+#     artefacto descargable en la ejecución. Sirve para probar antes de fusionar.
+#   - Al subir una etiqueta v* (p. ej. v1.0.0): además crea un BORRADOR de versión (Release)
+#     con el APK adjunto. Se revisa y se publica a mano.
+#   - A mano desde la pestaña Actions ("Run workflow").
+#
+# Requiere dos secrets del repositorio (Settings → Secrets and variables → Actions):
+#   EXPO_PUBLIC_SUPABASE_URL y EXPO_PUBLIC_SUPABASE_ANON_KEY. Ver docs/BUILDS.md.
+#
+# Firma: el APK se firma con la clave de depuración pública de la plantilla de Expo. Sirve para
+# instalarlo directamente en los teléfonos de la tienda, pero NO para Google Play.
+# Para las tiendas se usa Expo Build (docs/BUILDS.md), que gestiona claves propias.
+
+name: APK de Android
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+    # Las etiquetas ignoran este filtro: siempre generan el APK.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/workflows/eas-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  android:
+    name: Compilar APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v7
+
+      - name: Verificar configuración
+        id: config
+        shell: bash
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          ES_ETIQUETA: ${{ startsWith(github.ref, 'refs/tags/') }}
+          ETIQUETA: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./app.json').expo.version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          if [ -z "${EXPO_PUBLIC_SUPABASE_URL:-}" ] || [ -z "${EXPO_PUBLIC_SUPABASE_ANON_KEY:-}" ]; then
+            if [ "$ES_ETIQUETA" = "true" ]; then
+              echo "::error title=Faltan secrets::Configura EXPO_PUBLIC_SUPABASE_URL y EXPO_PUBLIC_SUPABASE_ANON_KEY en Settings → Secrets and variables → Actions antes de publicar una versión."
+              exit 1
+            fi
+            echo "::warning title=Faltan secrets::El APK se compila sin conexión a Supabase: abrirá la pantalla 'Falta configurar la conexión'. Sirve solo para comprobar que la app compila."
+          fi
+
+          if [ "$ES_ETIQUETA" = "true" ] && [ "$ETIQUETA" != "v$VERSION" ]; then
+            echo "::error title=Versión no coincide::La etiqueta es $ETIQUETA pero app.json tiene la versión $VERSION. La etiqueta debe ser v$VERSION."
+            exit 1
+          fi
+
+          # Android solo instala una actualización si su versionCode es mayor: se usa el número
+          # de ejecución del flujo, que siempre crece.
+          node -e "
+            const fs = require('fs');
+            const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            app.expo.android.versionCode = Number(process.env.GITHUB_RUN_NUMBER);
+            fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
+          "
+          echo "Versión $VERSION (versionCode $GITHUB_RUN_NUMBER)"
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # El proyecto Android se genera más abajo (prebuild), así que la caché de Gradle se
+      # identifica por las dependencias de package-lock.json y no por archivos .gradle.
+      - name: Caché de Gradle
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar el proyecto Android
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Compilar el APK
+        working-directory: android
+        env:
+          # Expo incrusta estas variables en la app al empaquetar el JavaScript.
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          NODE_ENV: production
+        # Solo arquitecturas de teléfonos reales (64 y 32 bits); se omiten las de emuladores.
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+
+      - name: Preparar el APK
+        id: apk
+        shell: bash
+        run: |
+          NAME="brisa10-${{ steps.config.outputs.version }}.apk"
+          mv android/app/build/outputs/apk/release/app-release.apk "$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Guardar el APK como artefacto
+        uses: actions/upload-artifact@v7
+        with:
+          name: brisa10-android-${{ steps.config.outputs.version }}
+          path: ${{ steps.apk.outputs.name }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Crear el borrador de versión
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ETIQUETA: ${{ github.ref_name }}
+          APK: ${{ steps.apk.outputs.name }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$ETIQUETA" > /dev/null 2>&1; then
+            gh release create "$ETIQUETA" --draft --title "Brisa10 $ETIQUETA" --notes "$(cat <<'NOTAS'
+          App de Brisa10 para Android.
+
+          **Cómo instalar**
+          1. En el teléfono, descarga el archivo `.apk` de la sección **Assets**.
+          2. Ábrelo. Si Android lo pide, permite **instalar apps de fuentes desconocidas** para el navegador o el gestor de archivos.
+          3. Para actualizar, instala la versión nueva encima de la anterior.
+
+          La app necesita conexión a internet.
+          NOTAS
+          )"
+          fi
+          gh release upload "$ETIQUETA" "$APK" --clobber

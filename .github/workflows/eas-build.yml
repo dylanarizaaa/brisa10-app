@@ -1,0 +1,75 @@
+# Lanza builds en Expo Build (servicio de Expo) para Android y/o iOS. Opcional.
+#
+# Es la vía para iOS (requiere cuenta de Apple Developer) y para publicar en las tiendas.
+# Antes de usarlo hay que hacer la configuración inicial UNA vez desde un computador
+# (eas init y un primer eas build, que crean las credenciales). Ver docs/BUILDS.md.
+#
+# Requiere el secret EXPO_TOKEN (token de acceso de tu cuenta de Expo).
+# El build corre en los servidores de Expo; el resultado aparece en expo.dev.
+
+name: Build con Expo
+
+on:
+  workflow_dispatch:
+    inputs:
+      plataforma:
+        description: 'Plataforma'
+        type: choice
+        options: [android, ios, all]
+        default: all
+      perfil:
+        description: 'Perfil de eas.json (preview = instalación directa, production = tiendas)'
+        type: choice
+        options: [preview, production]
+        default: production
+      enviar_a_tiendas:
+        description: 'Enviar a App Store Connect (TestFlight) y Google Play al terminar (solo perfil production)'
+        type: boolean
+        default: false
+
+jobs:
+  eas:
+    name: Lanzar build en Expo
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar token de Expo
+        shell: bash
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "${EXPO_TOKEN:-}" ]; then
+            echo "::error title=Falta EXPO_TOKEN::Crea un token en expo.dev (Account settings → Access tokens) y guárdalo como secret EXPO_TOKEN."
+            exit 1
+          fi
+
+      - name: Descargar el código
+        uses: actions/checkout@v7
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Configurar Expo
+        uses: expo/expo-github-action@v9
+        with:
+          eas-version: latest
+          packager: npm
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Lanzar el build
+        shell: bash
+        env:
+          PLATAFORMA: ${{ inputs.plataforma }}
+          PERFIL: ${{ inputs.perfil }}
+          ENVIAR: ${{ inputs.enviar_a_tiendas && inputs.perfil == 'production' }}
+        run: |
+          if [ "$ENVIAR" = "true" ]; then
+            eas build --platform "$PLATAFORMA" --profile "$PERFIL" --non-interactive --no-wait --auto-submit
+          else
+            eas build --platform "$PLATAFORMA" --profile "$PERFIL" --non-interactive --no-wait
+          fi
