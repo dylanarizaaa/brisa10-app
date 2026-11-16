@@ -77,6 +77,59 @@ Si la etiqueta no coincide con la versión de `app.json`, o faltan los secrets, 
 - Se firma con la **clave de depuración pública** de la plantilla de Expo. Sirve para instalarlo directamente, pero **no** para Google Play.
 - Si más adelante pasas a Expo Build, la firma cambia: hay que **desinstalar** la versión anterior antes de instalar la nueva (los datos están en Supabase, no se pierde nada; solo hay que volver a iniciar sesión).
 
+## Compilar el APK en tu propio computador (opcional)
+
+No es necesario: el APK de GitHub Actions ya sale firmado y listo. Hazlo solo si quieres compilar sin subir código.
+
+> **Requiere Java 17.** Si tienes una versión más nueva (por ejemplo Java 21 o 27), Gradle falla con `Unsupported class file major version NN` (71 = Java 27). Hay dos formas de resolverlo.
+
+### Opción A: Java 17 solo en esa terminal (recomendada, sin Docker)
+
+1. Instala Java 17: `winget install EclipseAdoptium.Temurin.17.JDK` (o descarga Temurin 17 desde adoptium.net). Puede convivir con tu Java actual.
+2. En **PowerShell**, dentro de la carpeta del proyecto (ajusta la ruta a la versión instalada; mira `dir "C:\Program Files\Eclipse Adoptium"`):
+
+   ```powershell
+   $env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-17.0.13.11-hotspot"
+   $env:Path = "$env:JAVA_HOME\bin;$env:Path"
+   java -version                      # debe decir 17.x
+   npm install
+   npx expo prebuild --platform android --clean
+   cd android
+   .\gradlew.bat --stop               # cierra los procesos de Gradle que se hayan iniciado con otra versión de Java
+   .\gradlew.bat assembleRelease
+   ```
+
+3. El APK queda en `android\app\build\outputs\apk\release\app-release.apk`.
+
+Los datos de conexión se toman de `.env.local` (ver arriba). Los cambios de variables solo aplican a esa ventana de PowerShell: al abrir otra, vuelve a usar Java por defecto.
+
+Si Gradle dice `SDK location not found`, instala **Android Studio** (trae el SDK) y crea `android\local.properties` con `sdk.dir=C\:\\Users\\<tu usuario>\\AppData\\Local\\Android\\Sdk`.
+
+Para fijar Java 17 en Gradle de forma permanente, agrega en `%USERPROFILE%\.gradle\gradle.properties` la línea `org.gradle.java.home=C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.13.11-hotspot`. Afecta a todos tus proyectos de Gradle.
+
+### Opción B: Docker (Java 17, Node y SDK de Android incluidos)
+
+Sirve si no quieres instalar Java ni el SDK de Android. Requiere Docker Desktop (en Windows, con WSL 2) con al menos 6 GB de memoria asignada y unos 10 GB libres.
+
+```powershell
+# Una vez: construir la imagen
+docker build -t brisa10-android -f docker/android/Dockerfile docker/android
+
+# Cada vez que quieras un APK (en la carpeta del proyecto)
+docker run --rm --env-file .env.local `
+  -v "${PWD}:/src:ro" -v "${PWD}/out-apk:/out" `
+  -v brisa10-gradle:/root/.gradle -v brisa10-sdk:/opt/android-sdk `
+  brisa10-android
+```
+
+En macOS o Linux usa `$(pwd)` en lugar de `${PWD}` y `\` en lugar de `` ` ``.
+
+- El APK queda en `out-apk/brisa10-<versión>.apk`.
+- La primera vez descarga el SDK de Android y Gradle (varios GB) y tarda más; los dos volúmenes (`brisa10-gradle`, `brisa10-sdk`) lo conservan para las siguientes.
+- Tu carpeta se monta en solo lectura: el contenedor trabaja sobre una copia, así que no toca `node_modules` ni `android/`.
+- Para que Android acepte instalar una versión nueva encima de otra, añade `-e VERSION_CODE=2` (un número mayor en cada compilación).
+- Firma: igual que el APK de GitHub Actions (clave de depuración de Expo).
+
 ## 3. Expo Build (EAS): iPhone y tiendas
 
 Expo compila en sus servidores, sin Mac ni Android Studio, y gestiona las claves de firma.
@@ -145,6 +198,7 @@ La numeración de builds la lleva Expo (`appVersionSource: remote`, `autoIncreme
 |---------|-------|----------|
 | La app abre "Falta configurar la conexión" | Se compiló sin los datos de Supabase | Revisa los secrets (GitHub) o las variables de entorno (Expo) y vuelve a compilar |
 | "No se pudo conectar con el servidor" al iniciar sesión | Sin internet, o el proyecto de Supabase está pausado | Revisa la conexión; en el plan gratuito, Supabase pausa proyectos sin uso por una semana |
+| Gradle falla con `Unsupported class file major version` | Usas una versión de Java más nueva que la 17 | Usa Java 17 (ver «Compilar el APK en tu propio computador») |
 | Android no deja instalar el APK | Falta permitir fuentes desconocidas, o hay instalada una versión firmada con otra clave | Permite la instalación; si cambiaste de método de compilación, desinstala la anterior |
 | El flujo de GitHub falla en "Versión no coincide" | La etiqueta no es `v` + `expo.version` | Borra la etiqueta y crea la correcta |
 | Expo Go dice que el proyecto es incompatible | Expo Go no coincide con SDK 58 | Actualiza Expo Go desde la tienda |
