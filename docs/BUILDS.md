@@ -86,7 +86,7 @@ No es necesario: el APK de GitHub Actions ya sale firmado y listo. Hazlo solo si
 ### Opción A: Java 17 solo en esa terminal (recomendada, sin Docker)
 
 1. Instala Java 17: `winget install EclipseAdoptium.Temurin.17.JDK` (o descarga Temurin 17 desde adoptium.net). Puede convivir con tu Java actual.
-2. En **PowerShell**, dentro de la carpeta del proyecto (ajusta la ruta a la versión instalada; mira `dir "C:\Program Files\Eclipse Adoptium"`):
+2. En **PowerShell**, dentro de la carpeta del proyecto (ajusta la ruta a la versión instalada; mira `dir "C:\Program Files\Eclipse Adoptium"`). `JAVA_HOME` es la carpeta del JDK, **sin** `\bin` al final; `\bin` solo va en la línea de `Path`:
 
    ```powershell
    $env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-17.0.13.11-hotspot"
@@ -198,6 +198,7 @@ La numeración de builds la lleva Expo (`appVersionSource: remote`, `autoIncreme
 |---------|-------|----------|
 | La app abre "Falta configurar la conexión" | Se compiló sin los datos de Supabase | Revisa los secrets (GitHub) o las variables de entorno (Expo) y vuelve a compilar |
 | "No se pudo conectar con el servidor" al iniciar sesión | Sin internet, o el proyecto de Supabase está pausado | Revisa la conexión; en el plan gratuito, Supabase pausa proyectos sin uso por una semana |
+| `JAVA_HOME is set to an invalid directory` | `JAVA_HOME` termina en `\bin` o apunta a una carpeta que no existe | Debe ser la carpeta del JDK (`...\jdk-17.x-hotspot`), sin `\bin` |
 | Gradle falla con `Unsupported class file major version` | Usas una versión de Java más nueva que la 17 | Usa Java 17 (ver «Compilar el APK en tu propio computador») |
 | Android no deja instalar el APK | Falta permitir fuentes desconocidas, o hay instalada una versión firmada con otra clave | Permite la instalación; si cambiaste de método de compilación, desinstala la anterior |
 | El flujo de GitHub falla en "Versión no coincide" | La etiqueta no es `v` + `expo.version` | Borra la etiqueta y crea la correcta |
